@@ -1,5 +1,6 @@
 import { where } from "sequelize";
 import db from "../models/index";
+import { raw } from "body-parser";
 
 let handleUserLogin = (email, password) => {
   return new Promise(async (resolve, reject) => {
@@ -14,7 +15,7 @@ let handleUserLogin = (email, password) => {
           raw: true,
         });
 console.log(user);
-        if (user) {
+        if (user){
           let check = user.password === password; // So sánh trực tiếp mật khẩu
           if (check) {
                     userData.errCode = 0;
@@ -85,6 +86,105 @@ let getAllUsers = (userId) => {
     }
   })
 }
+
+let createNewUser = (data) => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      let check = await checkUserEmail(data.email);
+      if (check === true)
+      {
+        resolve ({
+          errCode: 1,
+          errMessage: 'Your email is already in used, Plz try another email!!'
+        })
+      }
+      else {
+        await db.User.create({
+          email: data.email,
+          password: data.password,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          address : data.address,
+          phonenumber: data.phonenumber,
+          gender: data.gender,
+          roleId: data.roleId,
+          positionId: data.positionId,
+          image: data.avatar
+        })
+        resolve ({
+          errCode: 0,
+          message: 'OK'
+        })
+      }
+    } catch (e){
+      reject(e);
+    }
+  })
+}
+
+let deleteUser = (userId) => {
+  return new Promise( async(resolve, reject) => {
+    let foundUser = await db.User.findOne({
+      where: {id: userId}
+    })
+    if(!foundUser) {
+      resolve({
+        errCode: 2,
+        errMessage: `The user isn't exist`
+      })
+    }
+    else {
+      await db.User.destroy({
+        where: {id: userId}
+      })
+    }
+    resolve({
+        errCode: 0,
+        errMessage: `The user is delete`
+    })
+  })
+}
+let updateUserData = (data) => {
+  return new Promise( async(resolve, reject) => {
+    try {
+      if (!data.id || !data.roleId || !data.positionId || !data.gender) {
+        resolve({
+          errCode:2,
+          errMessage: 'Missing required parameter'
+        })
+      }
+      let user = await db.User.findOne({
+        where: {id: data.id},
+        raw: false
+      })
+      if(user){
+        user.firstName = data.firstName;
+        user.lastName = data.lastName;
+        user.address = data.address;
+        user.roleId = data.roleId;
+        user.positionId = data.positionId;
+        user.gender = data.gender;
+        user.phonenumber = data.phonenumber;
+        if (data.avatar) {
+          user.image = data.avatar;
+        }
+        await user.save();
+        resolve({
+          errCode: 0,
+          message: 'Update the user success!!'
+        })
+      } else {
+        resolve({
+          errCode: 1,
+          errMessage: `User's not found!!`
+        })
+      }
+    } catch(e)
+    {
+      reject(e);
+    }
+  })
+}
 let getAllCodeService = (typeInput) => {
   return new Promise(async (resolve, reject) => {
     try {
@@ -110,8 +210,13 @@ let getAllCodeService = (typeInput) => {
     }
   })
 }
+
 module.exports = {
   handleUserLogin: handleUserLogin,
   getAllUsers: getAllUsers,
-  getAllCodeService: getAllCodeService
+  createNewUser: createNewUser,
+  deleteUser: deleteUser,
+  updateUserData: updateUserData,
+  getAllCodeService: getAllCodeService,
+
 };

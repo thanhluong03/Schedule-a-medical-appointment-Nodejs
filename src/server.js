@@ -28,8 +28,8 @@ app.use(function (req, res, next) {
 });
 
 
-app.use(bodyParser.json()); // cấu hình tham số của phí người dùng gửi lênlên
-app.use(bodyParser.urlencoded({ extended: true }))
+app.use(bodyParser.json({limit: '50mb'})); // cấu hình tham số của phí người dùng gửi lênlên
+app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }))
 viewEngine(app);
 initWebRoutes(app);
 
