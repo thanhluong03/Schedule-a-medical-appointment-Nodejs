@@ -10,56 +10,79 @@ let buildUrlEmail = (doctorId, token) => {
     let result = `${process.env.URL_REACT}/verify-booking?token=${token}&doctorId=${doctorId}`
     return result;
 }
-let postBookAppointment = (data) =>{
-    return new Promise( async(resolve, reject) => {
+let postBookAppointment = (data) => {
+    return new Promise(async (resolve, reject) => {
         try {
-            if(!data.email || !data.doctorId || !data.timeType || !data.date || !data.fullName) {
-                resolve ({
+            if (!data.email || !data.doctorId || !data.timeType || !data.date || !data.fullName
+                || !data.selectedGender || !data.address) {
+                return resolve({
                     errCode: 1,
-                    errMessage: 'Missing required parameters!!!'
-                })
-            } else {
-                let token = uuidv4();
-                await emailService.sendSimpleEmail({
-                    reciverEmail: data.email,
-                    patientName: data.fullName,
-                    time: data.timeString,
-                    doctorName: data.doctorName,
-                    language: data.language,
-                    redirectLink: buildUrlEmail(data.doctorId, token)
-                })
-
-                let user = await db.User.findOrCreate({
-                    where: {
-                        email: data.email
-                    },
-                    defaults: {
-                        email: data.email,
-                        roleId: 'R3'
-                    },
+                    errMessage: 'Misshjyjhjhing required parameters!!!'
                 });
-                if(user && user[0]){
-                    await db.Booking.findOrCreate({
-                        where: {patientId: user[0].id},
-                        defaults: {
-                            statusId: 'S1',
-                            doctorId: data.doctorId,
-                            patientId: user[0].id,
-                            date: data.date,
-                            timeType: data.timeType,
-                            token: token
-                        }
-                    })
-                }
-                resolve ({
-                    errCode: 0,
-                    errMessage: 'Save infor patient success!!'
-                })
             }
-        } catch (e){
-            reject(e);
+            let [user, created] = await db.User.findOrCreate({
+                where: { email: data.email },
+                defaults: {
+                    email: data.email,
+                    roleId: 'R3',
+                    gender: data.selectedGender,
+                    address: data.address,
+                    firstName: data.fullName
+                },
+            });
+
+            if (!user) {
+                return resolve({
+                    errCode: 2,
+                    errMessage: 'User creation failed!'
+                });
+            }
+            let existingBooking = await db.Booking.findOne({
+                where: {
+                    doctorId: data.doctorId,
+                    patientId: user.id,
+                    date: data.date 
+                }
+            });
+
+            if (existingBooking) {
+                return resolve({
+                    errCode: 3,
+                    errMessage: 'You already have an appointment on this day!'
+                });
+            }
+
+            let token = uuidv4();
+            await db.Booking.create({
+                statusId: 'S1',
+                doctorId: data.doctorId,
+                patientId: user.id,
+                date: data.date,
+                timeType: data.timeType,
+                token: token
+            });
+            await emailService.sendSimpleEmail({
+                reciverEmail: data.email,
+                patientName: data.fullName,
+                time: data.timeString,
+                doctorName: data.doctorName,
+                language: data.language,
+                redirectLink: buildUrlEmail(data.doctorId, token)
+            });
+
+            resolve({
+                errCode: 0,
+                errMessage: 'Appointment booked successfully!'
+            });
+
+        } catch (e) {
+            console.error("Error in postBookAppointment:", e);
+            reject({
+                errCode: -1,
+                errMessage: 'Server error!'
+            });
         }
-    })
+    });
 }
 
 let postVerifyBookAppointment = (data) => {

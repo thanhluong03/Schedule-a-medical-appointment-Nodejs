@@ -3,10 +3,42 @@ import { where } from "sequelize";
 import db from "../models/index";
 import { extensions } from "sequelize/lib/utils/validator-extras";
 import { raw } from "body-parser";
-import _, { includes } from "lodash";
+import _, { includes, reject } from "lodash";
 import doctor_infor from "../models/doctor_infor";
+import { status } from "express/lib/response";
 require('dotenv').config();
+import emailService from '../services/emailService';
 const MAX_NUMBER_SCHEDULE = process.env.MAX_NUMBER_SCHEDULE;
+// let getTopDoctorHome = (limitInput) => {
+//   return new Promise(async (resolve, reject) => {
+//       try {
+//           let users = await db.User.findAll({
+//               where: {
+//                   roleId: {
+//                       [db.Sequelize.Op.ne]: 'R3'  // Không lấy người dùng có roleId là 'R3'
+//                   }
+//               },
+//               limit: limitInput,
+//               order: [["createdAt", "DESC"]],
+//               attributes: {
+//                   exclude: ['password'] // Đảm bảo đúng tên trường, không phải 'passwords'
+//               },
+//               include: [
+//                   { model: db.Allcode, as: 'positionData', attributes: ['valueVi'] },
+//                   { model: db.Allcode, as: 'genderData', attributes: ['valueVi'] }
+//               ],
+//               raw: true,
+//               nest: true
+//           });
+//           resolve({
+//               errCode: 0,
+//               data: users
+//           });
+//       } catch (e) {
+//           reject(e);
+//       }
+//   });
+// }
 let getTopDoctorHome = (limitInput) => {
   return new Promise(async (resolve, reject) => {
       try {
@@ -18,16 +50,28 @@ let getTopDoctorHome = (limitInput) => {
               },
               limit: limitInput,
               order: [["createdAt", "DESC"]],
-              attributes: {
-                  exclude: ['password'] // Đảm bảo đúng tên trường, không phải 'passwords'
-              },
+              attributes: ['id', 'firstName', 'lastName', 'image'], // Giữ nguyên tên và ảnh
               include: [
                   { model: db.Allcode, as: 'positionData', attributes: ['valueVi'] },
-                  { model: db.Allcode, as: 'genderData', attributes: ['valueVi'] }
+                  { model: db.Allcode, as: 'genderData', attributes: ['valueVi'] },
+                  { 
+                      model: db.Doctor_Infor, 
+                      attributes: ['specialtyId'], 
+                      required: false,  
+                      include: [
+                          { 
+                              model: db.Specialty, 
+                              as: 'specialtyData', 
+                              attributes: ['name'], 
+                              required: false  
+                          }
+                      ]
+                  }
               ],
-              raw: true,
-              nest: true
+              raw: false,  // Để đảm bảo dữ liệu có cấu trúc đúng
+              nest: true   // Để kết quả dễ đọc hơn
           });
+
           resolve({
               errCode: 0,
               data: users
@@ -41,23 +85,28 @@ let getTopDoctorHome = (limitInput) => {
 
 
 let getAllDoctors = () => {
-    return new Promise( async(resolve, reject) => {
-        try {
-            let doctors = await db.User.findAll({
-                where: {roleId: 'R2'},
-                 attributes: {
-                    exclude: ['password', 'image']
-                 },
-            })
-            resolve({
-                errCode: 0,
-                data: doctors
-            })
-        } catch (e){
-            reject(e);
-        }
-    })
-}
+  return new Promise(async (resolve, reject) => {
+      try {
+          let doctors = await db.User.findAll({
+              where: {
+                  roleId: { [db.Sequelize.Op.ne]: 'R3' }
+              },
+              attributes: { exclude: ['password', 'image'] }
+          });
+
+          console.log("Doctors:", doctors); // Debug xem có dữ liệu không
+
+          resolve({
+              errCode: 0,
+              data: doctors
+          });
+      } catch (e) {
+          console.error("Lỗi Backend:", e);
+          reject(e);
+      }
+  });
+};
+
 
 let checkRequiredFields = (inputData) => {
   let arrFields = ['doctorId', 'contentHTML', 'contentMarkdown', 'action',
@@ -382,6 +431,82 @@ let getProfileDoctorById = (inputId) => {
   })
 }
 
+let getListPatientForDoctor = (doctorId, date) => {
+  return new Promise(async(resolve, reject) => {
+    try {
+      if(!doctorId || !date) {
+        resolve ({
+          errCode: 1,
+          errMessage: 'Missing required parameters'
+        })
+      } else {
+        let data = await db.Booking.findAll({
+          where: {
+            statusId: 'S2',
+            doctorId: doctorId,
+            date: date
+          },
+          include: [
+            {
+              model: db.User, as: 'patientData',
+              attributes: ['email', 'firstName', 'address', 'gender'],
+              include: [
+                {
+                  model: db.Allcode, as: 'genderData', attributes: ['valueVi']
+                }
+              ]
+            },
+            {
+              model: db.Allcode, as: 'timeTypeDataPatient', attributes: ['valueVi']
+            }
+          ],
+          raw: false,
+          nest: true
+        })
+        resolve({
+          errCode: 0,
+          data: data
+        })
+      }
+    } catch (e){
+      reject(e);
+    }
+  })
+}
+
+let sendRemedy = (data) => {
+  return new Promise(async(resolve, reject) => {
+    try {
+      if(!data.email || !data.doctorId || !data.patientId || !data.timeType || !data.imgBase64) {
+        resolve ({
+          errCode: 1,
+          errMessage: 'Missing required parameters'
+        })
+      } else {
+        let appointment = await db.Booking.findOne({
+          where: {
+            doctorId: data.doctorId,
+            patientId: data.patientId,
+            timeType: data.timeType,
+            statusId: 'S2'
+          },
+          raw: false
+        })
+        if(appointment) {
+          appointment.statusId = 'S3';
+          await appointment.save()
+        }
+        await emailService.sendAttachment(data);
+        resolve({
+          errCode: 0,
+          errMessage: 'OK'
+        })
+      }
+    } catch(e) {
+      reject(e);
+    }
+  })
+}
 module.exports = {
     getTopDoctorHome: getTopDoctorHome,
     getAllDoctors: getAllDoctors,
@@ -391,4 +516,6 @@ module.exports = {
     getScheduleByDate: getScheduleByDate,
     getExtraInforDoctorById: getExtraInforDoctorById,
     getProfileDoctorById: getProfileDoctorById,
+    getListPatientForDoctor: getListPatientForDoctor,
+    sendRemedy: sendRemedy,
 }

@@ -7,7 +7,7 @@ module.exports = (sequelize, DataTypes) => {
     /**
      * Helper method for defining associations.
      * This method is not a part of Sequelize lifecycle.
-     * The `models/index` file will call this method automatically.
+     * The models/index file will call this method automatically.
      */
     static associate(models) {
       User.belongsTo(models.Allcode, {foreignKey: 'positionId', targetKey: 'keyMap', as: 'positionData'})
@@ -16,6 +16,7 @@ module.exports = (sequelize, DataTypes) => {
       User.hasOne(models.Doctor_Infor, {foreignKey: 'doctorId'})
 
       User.hasMany(models.Schedule, {foreignKey: 'doctorId', as: 'doctorData'})
+      User.hasMany(models.Booking, {foreignKey: 'patientId', as: 'patientData'})
     }
   }
   User.init({
