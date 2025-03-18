@@ -17,7 +17,7 @@ let postBookAppointment = (data) => {
                 || !data.selectedGender || !data.address) {
                 return resolve({
                     errCode: 1,
-                    errMessage: 'Misshjyjhjhing required parameters!!!'
+                    errMessage: 'Missing required parameters!!!'
                 });
             }
             let [user, created] = await db.User.findOrCreate({
